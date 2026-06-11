@@ -69,27 +69,40 @@ if uploaded_files:
         index = RetrievalIndex.build(chunks)
         paper_titles = sorted({p.paper_title for p in all_pages})
 
-    left, right = st.columns([1, 1])
+    st.success(f"Loaded {len(paper_titles)} paper(s), {len(all_pages)} page(s), and {len(chunks)} chunks.")
+    with st.expander("Uploaded papers"):
+        for title in paper_titles:
+            st.write(f"- {title}")
+
+    def use_suggested_question(selected_question: str) -> None:
+        st.session_state["question"] = selected_question
+
+    if "question" not in st.session_state:
+        st.session_state["question"] = ""
+
+    st.subheader("Ask about your paper")
+    left, right = st.columns([1, 1.25], vertical_alignment="top")
+
     with left:
-        st.success(f"Loaded {len(paper_titles)} paper(s), {len(all_pages)} page(s), and {len(chunks)} chunks.")
-        with st.expander("Uploaded papers"):
-            for title in paper_titles:
-                st.write(f"- {title}")
+        st.markdown("**Suggested questions**")
+        suggested = suggest_questions(chunks)
+        for i, q in enumerate(suggested):
+            st.button(
+                q,
+                key=f"suggested_question_{i}",
+                use_container_width=True,
+                on_click=use_suggested_question,
+                args=(q,),
+            )
 
     with right:
-        st.subheader("Suggested questions")
-        suggested = suggest_questions(chunks)
-        for q in suggested:
-            st.write(f"- {q}")
-
-    st.divider()
-    question = st.text_area(
-        "Ask a question about the uploaded paper(s)",
-        placeholder="Example: What is the main contribution and what are the limitations?",
-        height=100,
-    )
-
-    ask = st.button("Ask", type="primary")
+        question = st.text_area(
+            "Your question",
+            key="question",
+            placeholder="Example: What is the main contribution and what are the limitations?",
+            height=135,
+        )
+        ask = st.button("Ask", type="primary", use_container_width=True)
 
     if ask and question.strip():
         start = time.perf_counter()
