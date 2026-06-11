@@ -1,48 +1,160 @@
-# Research Paper RAGOps Assistant
+# PaperWise AI
 
-A production-style research paper assistant for people who upload papers daily and ask questions about them.
+PaperWise AI helps you read research papers faster.
 
-The app lets users upload one or more PDFs, automatically extracts text, chunks the papers, retrieves relevant passages, answers questions with citations, suggests useful questions, and logs query/quality metadata with MLflow.
+Upload one or more PDF papers, ask questions, get citation-grounded answers, compare papers, find possible weaknesses, and export answers as PDF notes.
 
-It is designed as a portfolio-ready **LLMOps / RAGOps / MLOps** project rather than a notebook demo.
+---
 
-## Features
+## What You Can Do
 
-- PDF upload and text extraction
-- Paper chunking with page-aware citations
-- Retrieval over uploaded papers using TF-IDF
-- Optional LLM answer generation with OpenAI
-- Offline fallback answer generation if no API key is provided
-- Suggested research questions for each uploaded paper set
-- Prompt-injection and unsafe-instruction detection
-- MLflow logging for query events, retrieval metrics, latency, and guardrail flags
-- Streamlit public UI
-- FastAPI backend example
-- Docker support
-- GitHub Actions CI
-- Unit tests
+* Upload one or more research papers as PDFs
+* Ask questions about the uploaded papers
+* Get answers with retrieved citations and page references
+* Generate an automatic structured summary
+* See paper-specific suggested questions
+* Compare multiple uploaded papers
+* Ask for possible reviewer concerns
+* Export the question, answer, and retrieved passages as a PDF
+* Use the app with or without an OpenAI API key
 
-## Why this solves a real problem
+---
 
-Many researchers repeatedly upload papers to ChatGPT and ask questions such as:
+## How It Works
 
-- What is the main contribution?
-- What problem does this paper solve?
-- What are the limitations?
-- What are the assumptions?
-- How is this different from previous work?
-- What experiments should I reproduce?
-- What could reviewers criticize?
+```text
+Upload PDF papers
+→ The app extracts text
+→ The papers are split into searchable chunks
+→ You ask a question
+→ The app retrieves relevant passages
+→ The app answers using those passages
+→ You can inspect the citations and export the answer
+```
 
-This project turns that workflow into a reusable web app.
+If you provide an OpenAI API key, PaperWise AI can generate more natural answers. Without an API key, it still works using offline citation-based retrieval.
 
-## Quick start
+---
 
-### 1. Create environment
+## Main Features
+
+### Paper Summary
+
+After you upload a paper, the app automatically creates a structured summary:
+
+```text
+Problem
+Method
+Main contribution
+Experiments
+Key result
+Limitations
+Key terms
+```
+
+The summary is automatically extracted and may be rough, but it gives a quick overview of the paper.
+
+---
+
+### Ask Questions
+
+You can ask questions such as:
+
+```text
+What is the main contribution of this paper?
+What problem does this paper solve?
+What method does this paper propose?
+How does the method work in simple terms?
+What experiments were conducted?
+What were the main results?
+What are the limitations?
+How is this paper different from prior work?
+```
+
+---
+
+### Suggested Questions
+
+The app suggests questions based on the uploaded paper content.
+
+Selecting a suggested question automatically sends it and generates an answer.
+
+---
+
+### Reviewer Mode
+
+Reviewer mode helps identify possible concerns, such as:
+
+```text
+weak assumptions
+missing experiments
+missing baselines
+unclear evaluation
+limited datasets
+possible limitations
+```
+
+This can help you think more critically about a paper.
+
+---
+
+### Paper Comparison
+
+If you upload at least two papers, you can compare them.
+
+The app compares papers by:
+
+```text
+problem
+method
+key result
+limitation
+```
+
+If only one paper is uploaded, the app will ask you to upload at least two papers before using comparison mode.
+
+---
+
+### PDF Export
+
+You can export the result as a PDF containing:
+
+```text
+question
+answer
+retrieved citations and passages
+```
+
+This is useful for saving literature-review notes.
+
+---
+
+## Using an OpenAI API Key
+
+PaperWise AI works without an API key, but answers are more basic.
+
+To get higher-quality answers, enter your OpenAI API key in the sidebar.
+
+The app uses the key only to generate answers for your current session. Do not share your API key publicly.
+
+---
+
+## Running Locally
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/arashVsh/research-paper-ragops.git
+cd research-paper-ragops
+```
+
+### 2. Create a virtual environment
 
 ```bash
 python -m venv .venv
 ```
+
+Activate it.
 
 Windows:
 
@@ -50,19 +162,19 @@ Windows:
 .venv\Scripts\activate
 ```
 
-Linux/macOS:
+macOS/Linux:
 
 ```bash
 source .venv/bin/activate
 ```
 
-### 2. Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Streamlit app
+### 4. Run the app
 
 ```bash
 streamlit run streamlit_app.py
@@ -70,120 +182,52 @@ streamlit run streamlit_app.py
 
 Open the local URL shown in the terminal.
 
-### 4. Optional: use OpenAI for higher-quality answers
+---
 
-Create a `.env` file:
+## Deployment Notes
 
-```bash
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4o-mini
+For Streamlit Community Cloud, use a lightweight `requirements.txt` such as:
+
+```txt
+streamlit>=1.35.0
+pypdf>=4.2.0
+scikit-learn>=1.4.0
+numpy>=1.26.0
+python-dotenv>=1.0.1
+openai>=1.30.0
+reportlab>=4.2.0
 ```
 
-The app still works without an API key, but it uses an extractive fallback answerer.
+Do not deploy a full local `pip freeze` file, because it may include packages that only work on your own computer.
 
-## Run MLflow UI
+---
 
-```bash
-mlflow ui --backend-store-uri ./mlruns
-```
+## Privacy Note
 
-Then open:
+Uploaded papers are processed during the running app session.
 
-```text
-http://127.0.0.1:5000
-```
+The app is not designed as a permanent paper library. Do not upload private or sensitive documents unless you trust the deployment environment.
 
-You will see logged query runs with metrics such as retrieval score, latency, number of chunks, answer length, and guardrail flags.
+If you use an OpenAI API key, the retrieved paper passages needed to answer your question may be sent to the OpenAI API.
 
-## Run FastAPI backend
-
-```bash
-uvicorn api.main:app --reload
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Docker
-
-```bash
-docker build -t research-paper-ragops .
-docker run -p 8501:8501 --env-file .env research-paper-ragops
-```
-
-Open:
-
-```text
-http://localhost:8501
-```
-
-## Deploy publicly
-
-The easiest public deployment options are:
-
-### Streamlit Community Cloud
-
-1. Push this project to GitHub.
-2. Go to Streamlit Community Cloud.
-3. Connect your GitHub repository.
-4. Set the main file to `streamlit_app.py`.
-5. Add `OPENAI_API_KEY` as a secret if you want LLM answers.
-
-### Hugging Face Spaces
-
-1. Create a new Space.
-2. Choose Streamlit.
-3. Upload the repository files.
-4. Add `OPENAI_API_KEY` as a secret if needed.
-
-If you want everyone to use the app without entering their own key, you need to provide a backend API key yourself and control rate limits/cost.
-
-## Project structure
-
-```text
-research-paper-ragops/
-├── streamlit_app.py
-├── api/
-│   └── main.py
-├── src/
-│   ├── answerer.py
-│   ├── chunking.py
-│   ├── config.py
-│   ├── guardrails.py
-│   ├── metrics.py
-│   ├── mlflow_logger.py
-│   ├── pdf_loader.py
-│   ├── question_suggestions.py
-│   ├── retriever.py
-│   └── schemas.py
-├── tests/
-├── .github/workflows/ci.yml
-├── Dockerfile
-├── requirements.txt
-├── .env.example
-└── README.md
-```
-
-## Resume bullet
-
-Built a public Research Paper RAGOps Assistant using Streamlit, FastAPI, MLflow, Docker, and automated tests; implemented PDF ingestion, retrieval-augmented question answering, citation-grounded responses, suggested research questions, prompt-injection checks, query observability, and MLflow logging for retrieval quality, latency, and guardrail metrics.
+---
 
 ## Limitations
 
-- The offline answerer is extractive and not as fluent as an LLM.
-- TF-IDF retrieval is lightweight and easy to deploy, but dense embeddings can improve semantic search.
-- Public deployment with an LLM requires cost control, authentication, or per-user API keys.
+* Offline mode is extractive and may sound less natural than an LLM.
+* Search is based on lightweight TF-IDF retrieval.
+* Some scanned PDFs may not work because OCR is not included.
+* Automatically generated summaries may be imperfect.
+* The app does not currently save a personal paper library.
 
-## Future improvements
+---
 
-- Add Chroma/Qdrant vector database
-- Add dense embeddings
-- Add multi-user authentication
-- Add persistent document collections
-- Add paper comparison mode
-- Add reviewer-style critique mode
-- Add automatic paper cards and model cards
-- Add monitoring dashboard
+## Future Improvements
+
+* Better semantic search with embeddings
+* Persistent paper collections
+* OCR for scanned PDFs
+* More detailed paper comparison tables
+* Citation-quality checking
+* Better table and figure extraction
+* User accounts for private paper libraries
