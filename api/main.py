@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import tempfile
 import time
-from pathlib import Path
-
 from fastapi import FastAPI, File, Form, UploadFile
 
 from src.answerer import answer_question

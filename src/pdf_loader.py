@@ -4,7 +4,6 @@ import hashlib
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
 
 from pypdf import PdfReader
 

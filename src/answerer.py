@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
 import re
-from typing import Iterable
-
 from src.config import CONFIG
 from src.guardrails import detect_prompt_injection, sanitize_for_prompt
 from src.schemas import AnswerResult, RetrievedChunk
