@@ -10,7 +10,7 @@ from src.schemas import PaperChunk
 BASE_RESEARCH_QUESTIONS = [
     "What problem is this paper trying to solve?",
     "What is the main contribution of this paper?",
-    "Explain the method in simple terms.",
+    "What method does this paper propose, and how does it work in simple terms?",
     "What assumptions does the paper make?",
     "What datasets and evaluation metrics are used?",
     "What are the main results?",
@@ -20,6 +20,7 @@ BASE_RESEARCH_QUESTIONS = [
     "What experiments should I reproduce first?",
     "What future work does this paper suggest?",
     "Summarize the paper as 5 bullet points.",
+    "Which section should I read first to understand the method?",
 ]
 
 

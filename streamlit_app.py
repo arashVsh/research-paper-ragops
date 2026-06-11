@@ -39,7 +39,11 @@ with st.sidebar:
         help="Optional. If empty, the app uses an offline extractive answerer.",
     )
     model_name = st.text_input("OpenAI model", value=CONFIG.openai_model)
-    st.info("No API key? The app still works with an offline citation-based answerer.")
+
+    if user_api_key.strip():
+        st.success("OpenAI API key detected. LLM mode will be attempted.")
+    else:
+        st.info("No API key detected. The app will use offline citation-based retrieval.")
 
 uploaded_files = st.file_uploader(
     "Upload one or more research papers as PDF",
@@ -107,6 +111,15 @@ if uploaded_files:
     if ask and question.strip():
         start = time.perf_counter()
         results = index.search(question, top_k=top_k)
+
+        max_score = max((item.score for item in results), default=0.0)
+        if max_score < 0.08:
+            st.warning(
+                "The retrieved passages have low relevance. The answer may be weak. "
+                "Try asking a more specific question, such as: "
+                "'What method does this paper propose, and how does it work in simple terms?'"
+            )
+
         answer = answer_question(
             question=question,
             results=results,
@@ -131,6 +144,12 @@ if uploaded_files:
             )
 
         st.subheader("Answer")
+        if answer.used_llm:
+            st.success("This answer was generated using the OpenAI API.")
+        elif user_api_key.strip():
+            st.warning("LLM mode was attempted, but the app used offline retrieval fallback.")
+        else:
+            st.info("This answer was generated using offline citation-based retrieval.")
         st.markdown(answer.answer)
 
         if answer.guardrail_warnings:
