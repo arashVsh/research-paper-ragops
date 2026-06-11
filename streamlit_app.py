@@ -18,14 +18,14 @@ from src.research_features import (
 from src.retriever import RetrievalIndex
 
 st.set_page_config(
-    page_title="Research Paper RAGOps Assistant",
+    page_title="PaperWise AI",
     page_icon="📄",
     layout="wide",
 )
 
-st.title("📄 Research Paper RAGOps Assistant")
+st.title("📄 PaperWise AI")
 st.caption(
-    "Upload research papers, ask questions, get citation-grounded answers, and log query metrics with MLflow."
+    "Upload research papers, ask citation-grounded questions, compare papers, and export answers as PDFs."
 )
 
 
