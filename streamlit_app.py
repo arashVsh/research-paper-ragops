@@ -306,6 +306,8 @@ if uploaded_files:
         st.session_state["pending_question"] = ""
     if "clear_question_on_next_run" not in st.session_state:
         st.session_state["clear_question_on_next_run"] = False
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
 
     # ------------------------------------------------------------------
     # Feature 2 and 3: reviewer mode + paper comparison mode
@@ -343,49 +345,54 @@ if uploaded_files:
             )
 
     # ------------------------------------------------------------------
-    # Answer box: compact and scrollable
+    # Answer box: chat-like history
     # ------------------------------------------------------------------
-    st.subheader("Answer")
-    with st.container(height=360, border=True):
-        if st.session_state["last_answer"] is None:
+    st.subheader("Chat")
+
+    with st.container(height=430, border=True):
+        if not st.session_state["chat_history"]:
             st.info(
                 "Choose a suggested question, use reviewer mode, or type your own question below."
             )
         else:
-            if st.session_state["last_warning"]:
-                st.warning(st.session_state["last_warning"])
+            for chat in st.session_state["chat_history"]:
+                with st.chat_message("user"):
+                    st.markdown(chat["question"])
 
-            answer = st.session_state["last_answer"]
-            if answer.used_llm:
-                st.success("Answer mode: OpenAI API / LLM")
-            elif user_api_key.strip():
-                st.warning(
-                    "Answer mode: LLM attempted, but offline retrieval fallback was used"
-                )
-            else:
-                st.info("Answer mode: Offline citation-based retrieval")
+                with st.chat_message("assistant"):
+                    if chat.get("warning"):
+                        st.warning(chat["warning"])
 
-            st.markdown(answer.answer)
+                    if chat.get("used_llm"):
+                        st.success("Answer mode: OpenAI API / LLM")
+                    elif user_api_key.strip():
+                        st.warning(
+                            "Answer mode: LLM attempted, but offline retrieval fallback was used"
+                        )
+                    else:
+                        st.info("Answer mode: Offline citation-based retrieval")
 
-            if answer.guardrail_warnings:
-                st.markdown("**Guardrail warnings**")
-                for warning in answer.guardrail_warnings[:5]:
-                    st.warning(warning)
+                    st.markdown(chat["answer_text"])
 
-        if st.session_state["last_answer"] is not None:
-            pdf_bytes = build_answer_pdf(
-                question=st.session_state["last_question"],
-                answer_text=st.session_state["last_answer"].answer,
-                results=st.session_state["last_results"],
-            )
+                    if chat.get("guardrail_warnings"):
+                        st.markdown("**Guardrail warnings**")
+                        for warning in chat["guardrail_warnings"][:5]:
+                            st.warning(warning)
 
-            st.download_button(
-                label="Export answer as PDF",
-                data=pdf_bytes,
-                file_name="research_paper_answer.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
+    if st.session_state["last_answer"] is not None:
+        pdf_bytes = build_answer_pdf(
+            question=st.session_state["last_question"],
+            answer_text=st.session_state["last_answer"].answer,
+            results=st.session_state["last_results"],
+        )
+
+        st.download_button(
+            label="Export latest answer as PDF",
+            data=pdf_bytes,
+            file_name="research_paper_answer.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
 
     # ------------------------------------------------------------------
     # Question box directly below answer
@@ -447,20 +454,20 @@ if uploaded_files:
 
                 max_score = max((item.score for item in results), default=0.0)
 
-                warning_message = ""
-                if max_score < 0.08:
-                    warning_message = (
-                        "The retrieved passages have low relevance. The answer may be weak. "
-                        "Try asking a more specific question, such as: "
-                        "'What method does this paper propose, and how does it work in simple terms?'"
-                    )
-
                 answer = answer_question(
                     question=pending_question,
                     results=results,
                     api_key=user_api_key.strip() or None,
                     model=model_name.strip() or None,
                 )
+
+                warning_message = ""
+                if (not answer.used_llm) and max_score < 0.08:
+                    warning_message = (
+                        "The retrieved passages have low relevance. The answer may be weak. "
+                        "Try asking a more specific question, such as: "
+                        "'What method does this paper propose, and how does it work in simple terms?'"
+                    )
 
                 latency = time.perf_counter() - start
                 metrics = compute_query_metrics(results, answer, latency)
@@ -485,6 +492,18 @@ if uploaded_files:
                 st.session_state["last_metrics"] = metrics
                 st.session_state["last_warning"] = warning_message
                 st.session_state["last_status"] = "Answer generated."
+
+                st.session_state["chat_history"].append(
+                    {
+                        "question": pending_question,
+                        "answer_text": answer.answer,
+                        "used_llm": answer.used_llm,
+                        "warning": warning_message,
+                        "guardrail_warnings": answer.guardrail_warnings,
+                        "metrics": metrics,
+                        "results": results,
+                    }
+                )
 
         finally:
             st.session_state["is_generating"] = False
