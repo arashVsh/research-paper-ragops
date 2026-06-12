@@ -7,7 +7,6 @@ from src.config import CONFIG
 from src.guardrails import detect_prompt_injection, sanitize_for_prompt
 from src.schemas import AnswerResult, RetrievedChunk
 
-
 LOW_RELEVANCE_THRESHOLD = 0.08
 
 
@@ -37,9 +36,7 @@ def _split_sentences(text: str) -> list[str]:
 
 def _keyword_set(query: str) -> set[str]:
     return {
-        w.lower()
-        for w in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", query)
-        if len(w) > 2
+        w.lower() for w in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", query) if len(w) > 2
     }
 
 
@@ -55,7 +52,9 @@ def _friendly_llm_error(exc: Exception) -> str:
         return "OpenAI API generation was rate-limited. I used offline citation-based retrieval instead."
     if "api_key" in raw or "authentication" in raw or "unauthorized" in raw:
         return "OpenAI API generation failed because the API key was rejected. I used offline citation-based retrieval instead."
-    return "OpenAI API generation failed. I used offline citation-based retrieval instead."
+    return (
+        "OpenAI API generation failed. I used offline citation-based retrieval instead."
+    )
 
 
 def _offline_extractive_answer(question: str, results: list[RetrievedChunk]) -> str:
@@ -87,7 +86,9 @@ def _offline_extractive_answer(question: str, results: list[RetrievedChunk]) -> 
     selected = scored_sentences[:5]
 
     if not selected:
-        selected = [(float(results[0].score), results[0].chunk.text[:600], results[0].rank)]
+        selected = [
+            (float(results[0].score), results[0].chunk.text[:600], results[0].rank)
+        ]
 
     bullets = []
     used = set()
@@ -111,7 +112,9 @@ def _offline_extractive_answer(question: str, results: list[RetrievedChunk]) -> 
     return intro + "\n".join(bullets)
 
 
-def _llm_answer(question: str, results: list[RetrievedChunk], api_key: str, model: str) -> str:
+def _llm_answer(
+    question: str, results: list[RetrievedChunk], api_key: str, model: str
+) -> str:
     from openai import OpenAI
 
     context = _format_context(results)
@@ -153,8 +156,27 @@ def answer_question(
     model: str | None = None,
 ) -> AnswerResult:
     warnings = detect_prompt_injection(question)
+
+    if warnings:
+        return AnswerResult(
+            answer=(
+                "I detected a possible prompt-injection or unsafe instruction in your question. "
+                "Please rephrase your question so it focuses only on the uploaded paper content."
+            ),
+            used_llm=False,
+            citations=[],
+            guardrail_warnings=warnings,
+        )
+
+    # Paper text is untrusted data. We warn about suspicious paper content,
+    # but we do not block normal user questions because uploaded papers may contain
+    # words like 'ignore' or 'instructions' in harmless contexts.
     for item in results:
-        warnings.extend(detect_prompt_injection(item.chunk.text))
+        doc_warnings = detect_prompt_injection(item.chunk.text)
+        if doc_warnings:
+            warnings.append(
+                f"Possible prompt-injection text found inside retrieved paper passage [C{item.rank}]."
+            )
 
     citations = [_citation_label(item) for item in results]
     api_key = api_key or CONFIG.openai_api_key
@@ -166,7 +188,11 @@ def answer_question(
             answer = _llm_answer(question, results, api_key=api_key, model=model)
             used_llm = True
         except Exception as exc:  # Keep public app usable if LLM fails.
-            answer = _friendly_llm_error(exc) + "\n\n" + _offline_extractive_answer(question, results)
+            answer = (
+                _friendly_llm_error(exc)
+                + "\n\n"
+                + _offline_extractive_answer(question, results)
+            )
     else:
         answer = _offline_extractive_answer(question, results)
 
