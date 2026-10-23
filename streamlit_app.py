@@ -25,18 +25,24 @@ st.set_page_config(
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
-:root {color-scheme: light;}
 html, body, [class*="css"], [data-testid="stApp"] {font-family:'DM Sans',sans-serif;}
-[data-testid="stApp"] {background:linear-gradient(160deg,#f7f9fc 0%,#eef4f6 100%);color:#172b3a;}
 .block-container {max-width:1180px;padding-top:2.2rem;padding-bottom:4rem;}
-h1,h2,h3 {font-family:'Manrope',sans-serif;letter-spacing:-.035em;color:#17324a;}
+h1,h2,h3 {font-family:'Manrope',sans-serif;letter-spacing:-.035em;}
 .paperwise-hero {background:linear-gradient(120deg,#142f42,#225e68);border-radius:22px;padding:2.1rem 2.3rem;color:#fff;box-shadow:0 16px 40px rgba(20,47,66,.14);margin-bottom:1.5rem;}
 .paperwise-hero h1 {color:#fff;margin:.25rem 0;font-size:clamp(2rem,4vw,3.3rem);}
 .paperwise-hero p {color:#dcebef;max-width:680px;font-size:1.06rem;margin:.5rem 0 0;}
 .paperwise-eyebrow {text-transform:uppercase;letter-spacing:.18em;color:#a8e5d9;font-weight:700;font-size:.77rem;}
-[data-testid="stSidebar"] {background:#f0f5f5;border-right:1px solid #dbe6e9;}
+[data-testid="stSidebar"] {border-right:1px solid #dbe6e9;}
 [data-testid="stVerticalBlockBorderWrapper"] {border-radius:18px;box-shadow:0 6px 24px rgba(25,59,73,.045);}
-[data-testid="stFileUploader"] {background:#fff;border:1px dashed #8cb8b6;border-radius:18px;padding:1rem;}
+[data-testid="stFileUploader"] {border:1px dashed #8cb8b6;border-radius:18px;padding:1rem;}
+[data-testid="stFileUploaderDropzone"] {background:#f8fbfc;border:1px solid #9bbdbd;border-radius:12px;color:#17324a;}
+[data-testid="stFileUploaderDropzone"] p,
+[data-testid="stFileUploaderDropzone"] span,
+[data-testid="stFileUploaderDropzone"] small {color:#17324a;}
+[data-testid="stFileUploaderDropzone"] button {background:#087f78 !important;color:#fff !important;border-color:#087f78 !important;}
+[data-testid="stFileUploaderDropzone"] button * {color:#fff !important;fill:#fff !important;}
+[data-testid="stFileUploaderDropzone"] button:hover {background:#066d68 !important;}
+[data-testid="stAlert"] p {color:#17324a;}
 [data-testid="stChatMessage"] {border-radius:16px;}
 div.stButton > button, div.stDownloadButton > button {border-radius:11px;font-weight:700;transition:transform .18s ease,box-shadow .18s ease;}
 div.stButton > button:hover, div.stDownloadButton > button:hover {transform:translateY(-2px);box-shadow:0 6px 16px rgba(17,77,84,.16);}
