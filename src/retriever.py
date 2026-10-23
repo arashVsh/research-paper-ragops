@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from src.schemas import PaperChunk, RetrievedChunk
 
@@ -34,6 +33,8 @@ class RetrievalIndex:
     chunks: list[PaperChunk]
     vectorizer: TfidfVectorizer
     matrix: object
+    char_vectorizer: TfidfVectorizer
+    char_matrix: object
 
     @classmethod
     def build(cls, chunks: list[PaperChunk]) -> "RetrievalIndex":
@@ -43,16 +44,28 @@ class RetrievalIndex:
             stop_words="english",
             ngram_range=(1, 2),
             max_features=50000,
+            sublinear_tf=True,
         )
         matrix = vectorizer.fit_transform([chunk.text for chunk in chunks])
-        return cls(chunks=chunks, vectorizer=vectorizer, matrix=matrix)
+        # Character n-grams recover technical names, spelling variants and
+        # singular/plural forms that a word-only index misses.
+        char_vectorizer = TfidfVectorizer(
+            analyzer="char_wb", ngram_range=(3, 5), max_features=40000,
+            sublinear_tf=True,
+        )
+        char_matrix = char_vectorizer.fit_transform([chunk.text for chunk in chunks])
+        return cls(chunks, vectorizer, matrix, char_vectorizer, char_matrix)
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         if not query.strip():
             return []
 
         query_vector = self.vectorizer.transform([query])
-        scores = cosine_similarity(query_vector, self.matrix).ravel()
+        char_query = self.char_vectorizer.transform([query])
+        # TF-IDF vectors are L2 normalized. Sparse multiplication avoids a
+        # document-by-document dense cosine computation.
+        scores = 0.8 * (self.matrix @ query_vector.T).toarray().ravel()
+        scores += 0.2 * (self.char_matrix @ char_query.T).toarray().ravel()
 
         # Pull a larger candidate pool first, then filter low-value bibliography chunks.
         candidate_count = min(len(self.chunks), max(top_k * 5, top_k))

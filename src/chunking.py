@@ -23,8 +23,8 @@ def chunk_pages(
     """
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
-    if overlap >= chunk_size:
-        raise ValueError("overlap must be smaller than chunk_size")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must be non-negative and smaller than chunk_size")
 
     chunks: list[PaperChunk] = []
     pages_by_paper: dict[str, list[PaperPage]] = defaultdict(list)
@@ -34,43 +34,39 @@ def chunk_pages(
     for paper_id, paper_pages in pages_by_paper.items():
         paper_pages = sorted(paper_pages, key=lambda p: p.page_number)
         paper_title = paper_pages[0].paper_title
-        buffer = ""
-        page_start = paper_pages[0].page_number
-        chunk_index = 0
-
+        segments: list[tuple[int, int, int]] = []
+        parts: list[str] = []
+        offset = 0
         for page in paper_pages:
-            if not buffer:
-                page_start = page.page_number
-
-            page_text = f"\n\n[Page {page.page_number}] {page.text}"
-            buffer += page_text
-
-            while len(buffer) >= chunk_size:
-                chunk_text = buffer[:chunk_size].strip()
-                page_end = page.page_number
-                chunks.append(
-                    PaperChunk(
-                        chunk_id=_chunk_id(paper_id, page_start, chunk_index, chunk_text),
-                        paper_id=paper_id,
-                        paper_title=paper_title,
-                        page_start=page_start,
-                        page_end=page_end,
-                        text=chunk_text,
-                    )
-                )
-                chunk_index += 1
-                buffer = buffer[chunk_size - overlap :]
-                page_start = max(page_start, page.page_number)
-
-        if buffer.strip():
+            part = f"\n\n[Page {page.page_number}] {page.text}"
+            parts.append(part)
+            segments.append((offset, offset + len(part), page.page_number))
+            offset += len(part)
+        full_text = "".join(parts)
+        start = 0
+        chunk_index = 0
+        while start < len(full_text):
+            end = min(start + chunk_size, len(full_text))
+            if end < len(full_text):
+                boundary = full_text.rfind(" ", start + int(chunk_size * 0.75), end)
+                if boundary > start:
+                    end = boundary
+            chunk_text = full_text[start:end].strip()
+            covered = [number for first, last, number in segments if first < end and last > start]
+            if not chunk_text:
+                break
             chunks.append(
                 PaperChunk(
-                    chunk_id=_chunk_id(paper_id, page_start, chunk_index, buffer),
+                    chunk_id=_chunk_id(paper_id, covered[0], chunk_index, chunk_text),
                     paper_id=paper_id,
                     paper_title=paper_title,
-                    page_start=page_start,
-                    page_end=paper_pages[-1].page_number,
-                    text=buffer.strip(),
+                    page_start=covered[0],
+                    page_end=covered[-1],
+                    text=chunk_text,
                 )
             )
+            chunk_index += 1
+            if end == len(full_text):
+                break
+            start = max(start + 1, end - overlap)
     return chunks

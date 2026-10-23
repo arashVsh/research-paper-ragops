@@ -7,9 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install -r requirements.txt
 
 COPY . .
+RUN useradd --create-home --uid 10001 paperwise && chown -R paperwise:paperwise /app
+USER paperwise
 
 EXPOSE 8501
 

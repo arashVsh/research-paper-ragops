@@ -15,3 +15,13 @@ def test_chunk_pages_creates_chunks():
     assert len(chunks) >= 1
     assert chunks[0].paper_title == "Test Paper"
     assert chunks[0].page_start == 1
+
+
+def test_overlap_keeps_original_page_citations():
+    pages = [
+        PaperPage("p", "Paper", 1, "alpha " * 35),
+        PaperPage("p", "Paper", 2, "beta " * 35),
+    ]
+    chunks = chunk_pages(pages, chunk_size=170, overlap=40)
+    assert any(c.page_start == 1 and c.page_end == 2 for c in chunks)
+    assert chunks[-1].page_end == 2

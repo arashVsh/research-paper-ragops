@@ -4,11 +4,10 @@ import time
 
 import streamlit as st
 from src.answerer import answer_question
-from src.chunking import chunk_pages
 from src.config import CONFIG
 from src.metrics import compute_query_metrics
 from src.mlflow_logger import log_query_event
-from src.pdf_loader import load_pdf_from_bytes
+from src.pipeline import MAX_PDF_BYTES, prepare_paper
 from src.question_suggestions import suggest_questions
 from src.research_features import (
     build_comparison_rows,
@@ -23,10 +22,39 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("📄 PaperWise AI")
-st.caption(
-    "Upload research papers, ask citation-grounded questions, compare papers, and export answers as PDFs."
-)
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+:root {color-scheme: light;}
+html, body, [class*="css"], [data-testid="stApp"] {font-family:'DM Sans',sans-serif;}
+[data-testid="stApp"] {background:linear-gradient(160deg,#f7f9fc 0%,#eef4f6 100%);color:#172b3a;}
+.block-container {max-width:1180px;padding-top:2.2rem;padding-bottom:4rem;}
+h1,h2,h3 {font-family:'Manrope',sans-serif;letter-spacing:-.035em;color:#17324a;}
+.paperwise-hero {background:linear-gradient(120deg,#142f42,#225e68);border-radius:22px;padding:2.1rem 2.3rem;color:#fff;box-shadow:0 16px 40px rgba(20,47,66,.14);margin-bottom:1.5rem;}
+.paperwise-hero h1 {color:#fff;margin:.25rem 0;font-size:clamp(2rem,4vw,3.3rem);}
+.paperwise-hero p {color:#dcebef;max-width:680px;font-size:1.06rem;margin:.5rem 0 0;}
+.paperwise-eyebrow {text-transform:uppercase;letter-spacing:.18em;color:#a8e5d9;font-weight:700;font-size:.77rem;}
+[data-testid="stSidebar"] {background:#f0f5f5;border-right:1px solid #dbe6e9;}
+[data-testid="stVerticalBlockBorderWrapper"] {border-radius:18px;box-shadow:0 6px 24px rgba(25,59,73,.045);}
+[data-testid="stFileUploader"] {background:#fff;border:1px dashed #8cb8b6;border-radius:18px;padding:1rem;}
+[data-testid="stChatMessage"] {border-radius:16px;}
+div.stButton > button, div.stDownloadButton > button {border-radius:11px;font-weight:700;transition:transform .18s ease,box-shadow .18s ease;}
+div.stButton > button:hover, div.stDownloadButton > button:hover {transform:translateY(-2px);box-shadow:0 6px 16px rgba(17,77,84,.16);}
+div.stButton > button[kind="primary"] {background:#087f78;border-color:#087f78;}
+div.stButton > button[kind="primary"]:hover {background:#066d68;border-color:#066d68;}
+@media (max-width:700px) {.block-container{padding:1rem .8rem 3rem}.paperwise-hero{padding:1.5rem}}
+</style>
+<div class="paperwise-hero">
+  <div class="paperwise-eyebrow">Research workspace</div>
+  <h1>PaperWise AI</h1>
+  <p>Read deeply, ask confidently. Explore papers with page-linked answers, structured insights, and clear comparisons.</p>
+</div>
+""", unsafe_allow_html=True)
+
+
+@st.cache_resource(max_entries=4, show_spinner=False)
+def _build_index(chunks):
+    return RetrievalIndex.build(chunks)
 
 
 def build_answer_pdf(question: str, answer_text: str, results: list | None = None) -> bytes:
@@ -120,7 +148,7 @@ def build_answer_pdf(question: str, answer_text: str, results: list | None = Non
 
     story = []
 
-    story.append(Paragraph("Research Paper RAGOps Assistant", styles["Title"]))
+    story.append(Paragraph("PaperWise AI", styles["Title"]))
     story.append(Spacer(1, 0.2 * inch))
 
     story.append(Paragraph("Question", styles["Heading2"]))
@@ -176,7 +204,7 @@ def build_answer_pdf(question: str, answer_text: str, results: list | None = Non
 
 
 with st.sidebar:
-    st.header("Settings")
+    st.header("Workspace settings")
     top_k = st.slider("Retrieved chunks", min_value=2, max_value=10, value=CONFIG.top_k)
     chunk_size = st.slider(
         "Chunk size", min_value=700, max_value=1800, value=CONFIG.chunk_size, step=100
@@ -188,9 +216,9 @@ with st.sidebar:
         value=CONFIG.chunk_overlap,
         step=10,
     )
-    enable_mlflow = st.checkbox("Log queries to MLflow", value=True)
+    enable_mlflow = st.checkbox("Log queries to MLflow", value=False, help="Optional metadata-only telemetry when MLflow is installed.")
     st.divider()
-    st.subheader("Optional LLM")
+    st.subheader("Answer mode")
     user_api_key = st.text_input(
         "OpenAI API key",
         value="",
@@ -199,15 +227,14 @@ with st.sidebar:
     )
     model_name = st.text_input("OpenAI model", value=CONFIG.openai_model)
 
-    if user_api_key.strip():
-        st.success("OpenAI API key detected. LLM mode will be attempted.")
+    if user_api_key.strip() or CONFIG.openai_api_key:
+        st.success("Online answers enabled. Offline answers remain available if the service fails.")
     else:
-        st.info(
-            "No API key detected. The app will use offline citation-based retrieval."
-        )
+        st.info("Offline citation-based answers are ready.")
 
+st.subheader("Start with your papers")
 uploaded_files = st.file_uploader(
-    "Upload one or more research papers as PDF",
+    "Upload one or more research papers as PDF (up to 20 MB each)",
     type=["pdf"],
     accept_multiple_files=True,
 )
@@ -219,16 +246,19 @@ if uploaded_files:
         )
         uploaded_files = uploaded_files[: CONFIG.max_uploaded_files]
 
-    with st.spinner(
-        "Extracting text, summarizing papers, and building retrieval index..."
-    ):
+    with st.spinner("Preparing papers and building the search index…"):
         all_pages = []
+        chunks = []
         for uploaded in uploaded_files:
-            pdf_bytes = uploaded.read()
             try:
-                all_pages.extend(load_pdf_from_bytes(pdf_bytes, uploaded.name))
+                pdf_bytes = uploaded.getvalue()
+                if len(pdf_bytes) > MAX_PDF_BYTES:
+                    raise ValueError("PDF exceeds the 20 MB limit.")
+                paper = prepare_paper(pdf_bytes, uploaded.name, chunk_size, chunk_overlap)
+                all_pages.extend(paper.pages)
+                chunks.extend(paper.chunks)
             except Exception as exc:
-                st.error(f"Could not read {uploaded.name}: {type(exc).__name__}: {exc}")
+                st.error(f"Could not read {uploaded.name}: {exc if isinstance(exc, ValueError) else 'invalid or damaged PDF'}")
 
         if not all_pages:
             st.error(
@@ -236,15 +266,15 @@ if uploaded_files:
             )
             st.stop()
 
-        chunks = chunk_pages(all_pages, chunk_size=chunk_size, overlap=chunk_overlap)
-        index = RetrievalIndex.build(chunks)
+        index = _build_index(chunks)
         paper_titles = sorted({p.paper_title for p in all_pages})
         paper_summary = build_structured_summary(chunks)
         dynamic_questions = suggest_questions(chunks)
 
-    st.success(
-        f"Loaded {len(paper_titles)} paper(s), {len(all_pages)} page(s), and {len(chunks)} chunks."
-    )
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Papers ready", len(paper_titles))
+    m2.metric("Searchable pages", len(all_pages))
+    m3.metric("Indexed passages", len(chunks))
     with st.expander("Uploaded papers"):
         for title in paper_titles:
             st.write(f"- {title}")
@@ -308,6 +338,8 @@ if uploaded_files:
         st.session_state["clear_question_on_next_run"] = False
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
+    if "last_error" not in st.session_state:
+        st.session_state["last_error"] = ""
 
     # ------------------------------------------------------------------
     # Feature 2 and 3: reviewer mode + paper comparison mode
@@ -348,6 +380,8 @@ if uploaded_files:
     # Answer box: chat-like history
     # ------------------------------------------------------------------
     st.subheader("Chat")
+    if st.session_state["last_error"]:
+        st.error(st.session_state["last_error"])
 
     with st.container(height=430, border=True):
         if not st.session_state["chat_history"]:
@@ -365,7 +399,7 @@ if uploaded_files:
 
                     if chat.get("used_llm"):
                         st.success("Answer mode: OpenAI API / LLM")
-                    elif user_api_key.strip():
+                    elif user_api_key.strip() or CONFIG.openai_api_key:
                         st.warning(
                             "Answer mode: LLM attempted, but offline retrieval fallback was used"
                         )
@@ -492,6 +526,7 @@ if uploaded_files:
                 st.session_state["last_metrics"] = metrics
                 st.session_state["last_warning"] = warning_message
                 st.session_state["last_status"] = "Answer generated."
+                st.session_state["last_error"] = ""
 
                 st.session_state["chat_history"].append(
                     {
@@ -505,6 +540,8 @@ if uploaded_files:
                     }
                 )
 
+        except Exception:
+            st.session_state["last_error"] = "Could not generate this answer. Please try again."
         finally:
             st.session_state["is_generating"] = False
             st.session_state["pending_question"] = ""
@@ -529,5 +566,5 @@ else:
 
 st.divider()
 st.caption(
-    "Privacy note: this demo keeps processing in the running app session. MLflow logging stores metadata, not full paper text."
+    "Privacy: recent PDFs may remain in a bounded memory cache until eviction or restart. Optional MLflow logging stores metadata, not paper text."
 )

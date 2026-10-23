@@ -184,27 +184,46 @@ Open the local URL shown in the terminal.
 
 ---
 
-## Deployment Notes
+## API
 
-For Streamlit Community Cloud, use a lightweight `requirements.txt` such as:
+Run the API locally with `uvicorn api.main:app --reload`. Interactive documentation is at [http://localhost:8000/docs](http://localhost:8000/docs), and its OpenAPI schema is at `/openapi.json`. Production exposes the same API at `https://YOUR_DOMAIN/api/`, with interactive documentation at `https://YOUR_DOMAIN/api/docs`.
 
-```txt
-streamlit>=1.35.0
-pypdf>=4.2.0
-scikit-learn>=1.4.0
-numpy>=1.26.0
-python-dotenv>=1.0.1
-openai>=1.30.0
-reportlab>=4.2.0
+Set `PAPERWISE_API_KEYS` to one or more long random keys separated by commas. Send one in the `X-API-Key` header. Local development permits requests without a key only when no keys are configured. In production (`APP_ENV=production`), the API refuses to start without keys. `/health` and the documentation are public; research endpoints require authentication.
+
+| Endpoint | Input | Output |
+| --- | --- | --- |
+| `POST /ask` | Multipart `file` PDF, `question` (2–2000 characters), optional `top_k` (1–10) | Answer, citations, answer mode, warnings, metrics |
+| `POST /suggest-questions` | Multipart `file` PDF | Suggested questions |
+| `GET /health` | None | Health status |
+
+```bash
+curl -X POST "https://YOUR_DOMAIN/api/ask" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -F "file=@paper.pdf;type=application/pdf" \
+  -F "question=What method does the paper propose?" \
+  -F "top_k=5"
 ```
 
-Do not deploy a full local `pip freeze` file, because it may include packages that only work on your own computer.
+Each PDF is limited to 20 MB and 250 pages. The API returns 413 for oversized uploads, 422 for invalid or unreadable PDFs, 401 for a missing or invalid key, and 429 when the per-key rate limit is exceeded. The default limit is 30 requests per minute per process; use a shared gateway rate limiter if you scale to multiple replicas. Set `PAPERWISE_CORS_ORIGINS` to a comma-separated list of exact trusted browser origins. Leave it empty for server-to-server clients.
+
+## Production deployment
+
+The included [compose.yaml](compose.yaml) runs the web app, API, and Caddy reverse proxy. Caddy obtains HTTPS certificates for a public domain. On a host with Docker Compose:
+
+1. Point your domain's DNS to the host and open inbound ports 80 and 443.
+2. Copy `.env.example` to `.env`. Set `PAPERWISE_DOMAIN`, a random `PAPERWISE_API_KEYS` value, and trusted `PAPERWISE_CORS_ORIGINS` if browser clients need cross-origin access. Optionally set `OPENAI_API_KEY` using the host's secret manager or the private `.env` file.
+3. Run `docker compose up -d --build`.
+4. Check `https://YOUR_DOMAIN/api/health` and `https://YOUR_DOMAIN/api/docs`.
+
+The container runs as a non-root user. The API uses one worker because its bounded in-memory PDF cache and rate limiter are process-local. The UI keeps a small cached search index so ordinary interactions do not re-extract and re-index uploaded PDFs. OpenAI requests have a timeout and fall back to offline citation-based answers. The UI also works without any OpenAI key. HTTPS requires working DNS and a reachable host; this repository does not include a live deployment or credentials.
+
+For Streamlit Community Cloud, deploy `streamlit_app.py` with `requirements.txt`. That hosts the UI only; use the Compose deployment or another HTTPS ASGI host to expose the API.
 
 ---
 
 ## Privacy Note
 
-Uploaded papers are processed during the running app session.
+Uploaded papers are processed in memory. A small process-local cache may retain recently processed PDF bytes and search indexes until eviction or restart.
 
 The app is not designed as a permanent paper library. Do not upload private or sensitive documents unless you trust the deployment environment.
 
@@ -215,7 +234,7 @@ If you use an OpenAI API key, the retrieved paper passages needed to answer your
 ## Limitations
 
 * Offline mode is extractive and may sound less natural than an LLM.
-* Search is based on lightweight TF-IDF retrieval.
+* Search uses lightweight word and character TF-IDF retrieval; it does not require a hosted embedding service.
 * Some scanned PDFs may not work because OCR is not included.
 * Automatically generated summaries may be imperfect.
 * The app does not currently save a personal paper library.
@@ -224,7 +243,7 @@ If you use an OpenAI API key, the retrieved paper passages needed to answer your
 
 ## Future Improvements
 
-* Better semantic search with embeddings
+* Optional semantic embeddings for large or multilingual paper collections
 * Persistent paper collections
 * OCR for scanned PDFs
 * More detailed paper comparison tables

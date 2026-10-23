@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+mlruns
+.data
+.streamlit/secrets.toml
+tests

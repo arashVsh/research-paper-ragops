@@ -1,0 +1,44 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    expose:
+      - "8501"
+
+  api:
+    build: .
+    restart: unless-stopped
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
+    environment:
+      APP_ENV: production
+      PAPERWISE_ROOT_PATH: /api
+      PAPERWISE_API_KEYS: ${PAPERWISE_API_KEYS:?Set PAPERWISE_API_KEYS in .env}
+      PAPERWISE_CORS_ORIGINS: ${PAPERWISE_CORS_ORIGINS:-}
+      PAPERWISE_RATE_LIMIT: ${PAPERWISE_RATE_LIMIT:-30}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    expose:
+      - "8000"
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    environment:
+      PAPERWISE_DOMAIN: ${PAPERWISE_DOMAIN:?Set PAPERWISE_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
